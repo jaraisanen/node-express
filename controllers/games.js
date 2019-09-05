@@ -1,9 +1,18 @@
 const gameRouter = require("express").Router()
+const jwt = require("jsonwebtoken")
 const Game = require("../models/game")
 const User = require("../models/user")
 
+const getTokenFrom = request => {
+  const authorization = request.get("authorization")
+  if (authorization && authorization.toLowerCase().startsWith("bearer ")) {
+    return authorization.substring(7)
+  }
+  return null
+}
+
 gameRouter.get("/", async (request, response) => {
-  const games = await Game.find({})
+  const games = await Game.find({}).populate("user", { username: 1, name: 1 })
   response.json(games.map(game => game.toJSON()))
 })
 
@@ -22,21 +31,30 @@ gameRouter.get("/:id", (request, response, next) => {
 gameRouter.post("/", async (request, response, next) => {
   const body = request.body
 
-  const user = await User.findById(body.userId)
+  const token = getTokenFrom(request)
 
-  const game = new Game({
-    name: body.name,
-    year: body.year,
-    date: new Date(),
-    user: user._id
-  })
   try {
+    const decodedToken = jwt.verify(token, process.env.SECRET)
+
+    if (!token || !decodedToken.id) {
+      return response.status(401).json({ error: "token missing or invalid" })
+    }
+
+    const user = await User.findById(decodedToken.id)
+
+    const game = new Game({
+      name: body.name,
+      year: body.year,
+      date: new Date(),
+      user: user._id
+    })
+
     const savedGame = await game.save()
     user.games = user.games.concat(savedGame._id)
     await user.save()
     response.json(savedGame.toJSON())
-  } catch (error) {
-    next(error)
+  } catch (exception) {
+    next(exception)
   }
 })
 

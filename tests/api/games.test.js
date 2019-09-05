@@ -1,9 +1,11 @@
 const supertest = require("supertest")
-const app = require("../../../app")
+const app = require("../../app")
 const api = supertest(app)
-const Game = require("../../../models/game")
+const Game = require("../../models/game")
 const mongoose = require("mongoose")
 const testHelper = require("../test_helper")
+
+let token = ""
 
 beforeEach(async () => {
   await Game.deleteMany({})
@@ -13,6 +15,11 @@ beforeEach(async () => {
     let gameObject = new Game(game)
     await gameObject.save()
   }
+  const loginResponse = await api
+    .post("/api/login")
+    .send(testHelper.newUserCredentials)
+
+  token = loginResponse.body.token
 })
 
 describe("Tests GET requests", () => {
@@ -25,15 +32,11 @@ describe("Tests GET requests", () => {
 
   test("response 404 with non-existing id", async () => {
     const validNonexistingId = await testHelper.nonExistingId()
-
-    console.log(validNonexistingId)
-
     await api.get(`/api/games/${validNonexistingId}`).expect(404)
   })
 
   test("all games are returned", async () => {
     const response = await api.get("/api/games")
-    console.log(response.body)
     expect(response.body.length).toBe(testHelper.initialGames.length)
   })
 
@@ -46,6 +49,10 @@ describe("Tests GET requests", () => {
 })
 
 describe("test POST requests", () => {
+  test("If no auth header, returns 401", async () => {
+    await api.post("/api/games").expect(401)
+  })
+
   test("adding a new game returns all games + new game", async () => {
     const newGame = {
       name: "Super Smash Bros. Melee",
@@ -54,6 +61,7 @@ describe("test POST requests", () => {
 
     await api
       .post("/api/games")
+      .set("Authorization", "Bearer " + token)
       .send(newGame)
       .expect(200)
       .expect("Content-Type", /application\/json/)
@@ -71,6 +79,7 @@ describe("test POST requests", () => {
 
     await api
       .post("/api/games")
+      .set("Authorization", "Bearer " + token)
       .send(newGame)
       .expect(400)
 
